@@ -1,6 +1,7 @@
 import numpy as np
 import typing as t
 from dataclasses import dataclass
+import pandas as pd
 
 # from pydantic.dataclasses import dataclass
 
@@ -54,7 +55,6 @@ class RequestRegister:
     def __init__(self):
         self.instances: List[Request] = []
         self.clock: Clock = Clock()
-        self._all_completed = 0
 
     def start(self):
         r = Request(self.clock)
@@ -67,23 +67,6 @@ class RequestRegister:
 
     def n_requests(self) -> int:
         return len(self.instances)
-
-    def n_completed(self) -> int:
-        i = self._all_completed
-        while i < len(self.instances):
-            if self.instances[i].is_complete():
-                i += 1
-            else:
-                break
-        self._all_completed = i
-        while i < len(self.instances):
-            if self.instances[i].is_complete():
-                i += 1
-        return i
-
-    def n_pending(self) -> int:
-        return self.n_requests() - self.n_completed()
-
 
 class Worker:
     def __init__(self, service_time):
@@ -125,6 +108,7 @@ class QSystem:
         self.wmax: int = 0
         # max index of an active worker
         self._n_serviced: int = 0
+        self._n_completed: int = 0
 
     def submit(self, req: Request):
         self.q.append(req)
@@ -134,6 +118,9 @@ class QSystem:
 
     def n_serviced(self):
         return self._n_serviced
+
+    def n_completed(self):
+        return self._n_completed
 
     def tick(self):
         # The tick function is split into work assign phase and the work completion phase, since we
@@ -157,6 +144,7 @@ class QSystem:
             if not self.q and wi > self.wmax:
                 break
             if r := w.tick():
+                self._n_completed += 1
                 ret.append(r)
                 if self.wmax == wi:
                     while self.wmax > 0 and self.worker[self.wmax].is_free():
@@ -196,29 +184,42 @@ class Histogram:
 @dataclass
 class RunStats:
     n_requests: Metric = Metric()
-    n_pending: Metric = Metric()
     n_serviced: Metric = Metric()
     n_completed: Metric = Metric()
-    qsize: Metric = Metric()
     response_time: Histogram = Histogram()
     service_time: Histogram = Histogram()
 
     def tick(self):
         self.n_requests.tick()
-        self.n_pending.tick()
         self.n_serviced.tick()
         self.n_completed.tick()
-        self.qsize.tick()
         self.response_time.tick()
         self.service_time.tick()
 
+    def df(self, percentiles : t.List[float] = [100]) -> pd.DataFrame:
+        df = pd.DataFrame({
+            "requests" : self.n_requests.data,
+            "serviced" : self.n_serviced.data,
+            "completed" : self.n_completed.data,
+        })
+        df['pending'] = df.requests - df.completed
+        df['queued'] = df.requests - df.serviced
+        df["r_request"] = df.requests.diff().fillna(df.requests)
+        df["r_serviced"] = df.completed.diff().fillna(df.serviced)
+        df["r_completed"] = df.completed.diff().fillna(df.completed)
+        rts = [ np.array(times) for times in self.response_time.data ]
+        sts = [ np.array(times) for times in self.service_time.data ]
+        for p in percentiles:
+            df[ "response_time_p{:g}".format(p) ] = [ (np.percentile(ar, p) if len(ar) > 0 else None) for ar in rts  ]
+            df[ "service_time_p{:g}".format(p) ] = [ (np.percentile(ar, p) if len(ar) > 0 else None) for ar in sts  ]
+        return df
 
 def run(
     workload: t.List[int],
     sys: QSystem,
     step: int = 10,
     percentiles: t.List[float] = [1],
-) -> (RequestRegister, RunStats):
+) -> t.Tuple[RequestRegister, RunStats]:
 
     reg = RequestRegister()
     stats = RunStats()
@@ -239,8 +240,6 @@ def run(
         stats.service_time.add([c.service_time() for c in completed])
         if (t+1) % step == 0:
             stats.n_serviced.set(sys.n_serviced())
-            stats.qsize.set(sys.qsize())
-            stats.n_pending.set(reg.n_pending())
             stats.tick()
 
     return (reg, stats)
