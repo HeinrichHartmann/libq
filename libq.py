@@ -266,6 +266,7 @@ class RunStats:
         )
         df["pending"] = df.requests - df.completed
         df["queued"] = df.requests - df.serviced
+        df["active"] = df.serviced - df.completed
         df["r_request"] = df.requests.diff().fillna(df.requests)
         df["r_serviced"] = df.serviced.diff().fillna(df.serviced)
         df["r_completed"] = df.completed.diff().fillna(df.completed)
@@ -298,6 +299,8 @@ def run(
     reg = RequestRegister()
     stats = RunStats()
     t = -1
+    # When depleted=True we will wait several step intervals until we stop
+    # processing. The term variable facilitates this dalay.
     term = 0
     while True:
         if term == 1:
@@ -307,9 +310,12 @@ def run(
             requests = int(workload[t])
         elif deplete and not sys.is_empty():
             requests = 0
-        else:
+        elif deplete:
+            if term == 0:
+                term = 4
             requests = 0
-            if term == 0: term = 4
+        else:
+            break
 
         # Submit new requests
         for _ in range(requests):
@@ -321,7 +327,8 @@ def run(
 
         # Collect telemetry
         if (t + 1) % step == 0:
-            if term > 1: term -= 1
+            if term > 1:
+                term -= 1
             stats.n_requests.set(sys.n_arrived())
             stats.n_completed.set(sys.n_completed())
             stats.n_serviced.set(sys.n_serviced())
@@ -330,6 +337,5 @@ def run(
         completed = sys.tick_complete()
         stats.response_time.add([c.response_time() for c in completed])
         stats.service_time.add([c.service_time() for c in completed])
-
 
     return stats
