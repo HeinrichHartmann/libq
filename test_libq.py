@@ -1,5 +1,7 @@
-import libq
+import pytest
 import numpy as np
+
+import libq
 
 def test_rr():
     RR = libq.RequestRegister()
@@ -26,7 +28,8 @@ def test_rr():
 
 def test_qs_11():
     RR = libq.RequestRegister()
-    SYS = libq.QSystem(service_time = 1, workers = 1)
+    W = [ libq.ConstWorker(1) ]
+    SYS = libq.QSystem(W)
     for _ in range(5):
         SYS.submit(RR.start())
     assert RR.n_requests() == 5
@@ -36,7 +39,8 @@ def test_qs_11():
 
 def test_qs_31():
     RR = libq.RequestRegister()
-    SYS = libq.QSystem(service_time = 3, workers = 1)
+    W = [ libq.ConstWorker(3) for _ in range(1) ]
+    SYS = libq.QSystem(W)
     for _ in range(5):
         SYS.submit(RR.start())
     assert RR.n_requests() == 5
@@ -53,7 +57,8 @@ def test_qs_31():
 
 def test_qs_13():
     RR = libq.RequestRegister()
-    SYS = libq.QSystem(service_time = 1, workers = 3)
+    W = [ libq.ConstWorker(1) for _ in range(3) ]
+    SYS = libq.QSystem(W)
     for _ in range(5):
         SYS.submit(RR.start())
     assert RR.n_requests() == 5
@@ -64,19 +69,19 @@ def test_qs_13():
 
 
 def test_run():
-    sys = libq.QSystem(service_time = 1, workers = 1)
-    reg, stats = libq.run([1,3,2,0,0,0,0,0], sys, step=1)
+    W = [ libq.ConstWorker(1) for _ in range(1) ]
+    sys = libq.QSystem(W)
+    stats = libq.run([1,3,2,0,0,0,0,0], sys, step=1)
     assert stats.n_requests.data  == [1,4,6,6,6,6,6,6]
     assert stats.n_serviced.data  == [1,2,3,4,5,6,6,6]
-    # assert stats.n_pending.data   == [0,2,3,2,1,0,0,0]
     assert stats.n_completed.data == [1,2,3,4,5,6,6,6]
-    assert stats.response_time.data == [[1],[1],[1],[2],[4],[5],[],[]]
+    assert stats.response_time.data == [[1],[1],[2],[3],[3],[4],[], []]
     assert stats.service_time.data == [[1],[1],[1],[1],[1],[1],[],[]]
-    assert stats.qsize.data == [0,2,3,2,1,0,0,0]
 
-
+@pytest.mark.skip(reason="For performance testing only")
 def test_run_perf():
-    sys = libq.QSystem(service_time = 30, workers = 500)
+    W = [ libq.ConstWorker(30) for _ in range(500) ]
+    SYS = libq.QSystem(W)
     workload = ([10]*100 + [30]*100 + [5]*500) * 50
-    reg, stats = libq.run(workload, sys, step=10)
+    stats = libq.run(workload, SYS, step=10)
     print(stats)
