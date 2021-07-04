@@ -74,9 +74,9 @@ def test_run():
     stats = libq.run([1,3,2,0,0,0,0,0], sys, step=1)
     assert stats.n_requests.data  == [1,4,6,6,6,6,6,6]
     assert stats.n_serviced.data  == [1,2,3,4,5,6,6,6]
-    assert stats.n_completed.data == [1,2,3,4,5,6,6,6]
-    assert stats.response_time.data == [[1],[1],[2],[3],[3],[4],[], []]
-    assert stats.service_time.data == [[1],[1],[1],[1],[1],[1],[],[]]
+    assert stats.n_completed.data == [0,1,2,3,4,5,6,6]
+    assert stats.response_time.data == [[],[1],[1],[2],[3],[3],[4],[]]
+    assert stats.service_time.data == [[],[1],[1],[1],[1],[1],[1],[]]
 
 @pytest.mark.skip(reason="For performance testing only")
 def test_run_perf():
