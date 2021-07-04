@@ -116,11 +116,11 @@ class ConstWorker(Worker):
 
 
 class MarkovWorker(Worker):
-    def __init__(self, expected_service_time: float):
-        assert expected_service_time > 0
+    def __init__(self, service_time: float):
+        assert service_time > 0
         self.t: int = 0  # clock
         self.req: t.Optional[Request] = None
-        self.p: float = 1.0 / expected_service_time
+        self.p: float = 1.0 / service_time
 
     def clear(self):
         self.t = 0
@@ -155,20 +155,28 @@ class QSystem:
         self.wmax: int = 0
         self.discipline = discipline
         # max index of an active worker
+        self._n_arrived: int = 0
         self._n_serviced: int = 0
         self._n_completed: int = 0
 
-    def submit(self, req: Request):
-        self.q.append(req)
-
     def qsize(self):
         return len(self.q)
+
+    def n_arrived(self):
+        return self._n_arrived
 
     def n_serviced(self):
         return self._n_serviced
 
     def n_completed(self):
         return self._n_completed
+
+    def is_empty(self) -> int:
+        return 0 == self._n_arrived - self._n_completed
+
+    def submit(self, req: Request):
+        self._n_arrived += 1
+        self.q.append(req)
 
     def tick(self):
         # The tick function is split into work assign phase and the work completion phase,
@@ -259,7 +267,7 @@ class RunStats:
         df["pending"] = df.requests - df.completed
         df["queued"] = df.requests - df.serviced
         df["r_request"] = df.requests.diff().fillna(df.requests)
-        df["r_serviced"] = df.completed.diff().fillna(df.serviced)
+        df["r_serviced"] = df.serviced.diff().fillna(df.serviced)
         df["r_completed"] = df.completed.diff().fillna(df.completed)
         rts = [np.array(times) for times in self.response_time.data]
         sts = [np.array(times) for times in self.service_time.data]
@@ -284,32 +292,37 @@ def run(
     sys: QSystem,
     step: int = 10,
     percentiles: t.List[float] = [1],
+    deplete: bool = False,
 ) -> RunStats:
 
     reg = RequestRegister()
     stats = RunStats()
-    for t, y in enumerate(workload):
-        requests = int(y)
+    t = -1
+    while True:
+        t += 1
+        if t < len(workload):
+            requests = int(workload[t])
+        elif deplete and not sys.is_empty():
+            requests = 0
+        else:
+            break
+
+        # Submit new requests
         for _ in range(requests):
             sys.submit(reg.start())
 
-        # simulation step
+        # Simulation step
         sys.tick_assign()
         reg.tick()
         completed = sys.tick_complete()
 
         # Collect telemetry
-        stats.n_requests.add(requests)
-        stats.n_completed.add(len(completed))
         stats.response_time.add([c.response_time() for c in completed])
         stats.service_time.add([c.service_time() for c in completed])
         if (t + 1) % step == 0:
+            stats.n_requests.set(sys.n_arrived())
+            stats.n_completed.set(sys.n_completed())
             stats.n_serviced.set(sys.n_serviced())
             stats.tick()
 
     return stats
-
-
-# Local Variables:
-# lsp-python-ms-extra-paths: '("./.venvpkg")
-# End:
