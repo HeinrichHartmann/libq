@@ -298,14 +298,18 @@ def run(
     reg = RequestRegister()
     stats = RunStats()
     t = -1
+    term = 0
     while True:
+        if term == 1:
+            break
         t += 1
         if t < len(workload):
             requests = int(workload[t])
         elif deplete and not sys.is_empty():
             requests = 0
         else:
-            break
+            requests = 0
+            if term == 0: term = 4
 
         # Submit new requests
         for _ in range(requests):
@@ -314,15 +318,18 @@ def run(
         # Simulation step
         sys.tick_assign()
         reg.tick()
-        completed = sys.tick_complete()
 
         # Collect telemetry
-        stats.response_time.add([c.response_time() for c in completed])
-        stats.service_time.add([c.service_time() for c in completed])
         if (t + 1) % step == 0:
+            if term > 1: term -= 1
             stats.n_requests.set(sys.n_arrived())
             stats.n_completed.set(sys.n_completed())
             stats.n_serviced.set(sys.n_serviced())
             stats.tick()
+
+        completed = sys.tick_complete()
+        stats.response_time.add([c.response_time() for c in completed])
+        stats.service_time.add([c.service_time() for c in completed])
+
 
     return stats
