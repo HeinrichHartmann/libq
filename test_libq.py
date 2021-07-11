@@ -1,5 +1,6 @@
 import pytest
 import numpy as np
+import pandas as pd
 
 import libq
 
@@ -71,12 +72,17 @@ def test_qs_13():
 def test_run():
     W = [ libq.ConstWorker(1) for _ in range(1) ]
     sys = libq.QSystem(W)
-    stats = libq.run([1,3,2,0,0,0,0,0], sys, step=1)
+    wl = [1,3,2,0,0,0,0,0]
+    stats = libq.run(wl, sys, step=1)
     assert stats.n_requests.data  == [1,4,6,6,6,6,6,6]
     assert stats.n_serviced.data  == [1,2,3,4,5,6,6,6]
     assert stats.n_completed.data == [0,1,2,3,4,5,6,6]
+    assert stats.c_pending.data  == [1,3,4,3,2,1,0,0]
+    assert stats.c_qsize.data  == [0,2,3,2,1,0,0,0]
+    assert stats.c_util.data == [1,1,1,1,1,1,0,0]
     assert stats.response_time.data == [[],[1],[1],[2],[3],[3],[4],[]]
     assert stats.service_time.data == [[],[1],[1],[1],[1],[1],[1],[]]
+    assert (stats.df()['r_request'].to_numpy() == np.array(wl)).all()
 
 @pytest.mark.skip(reason="For performance testing only")
 def test_run_perf():

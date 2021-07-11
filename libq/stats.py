@@ -1,6 +1,12 @@
 from dataclasses import dataclass, field
+import numpy as np
 import pandas as pd
 import typing as t
+
+
+def _diff(s: pd.Series):
+    return s.diff().fillna(s)
+
 
 class Metric:
     def __init__(self):
@@ -15,6 +21,10 @@ class Metric:
 
     def tick(self):
         self.data.append(self.acc)
+
+    def tick_and_reset(self):
+        self.data.append(self.acc)
+        self.acc = 0
 
 
 class Histogram:
@@ -35,6 +45,9 @@ class RunStats:
     n_requests: Metric = field(default_factory=Metric)
     n_serviced: Metric = field(default_factory=Metric)
     n_completed: Metric = field(default_factory=Metric)
+    c_pending: Metric = field(default_factory=Metric)
+    c_qsize: Metric = field(default_factory=Metric)
+    c_util: Metric = field(default_factory=Metric)
     response_time: Histogram = field(default_factory=Histogram)
     service_time: Histogram = field(default_factory=Histogram)
 
@@ -42,6 +55,9 @@ class RunStats:
         self.n_requests.tick()
         self.n_serviced.tick()
         self.n_completed.tick()
+        self.c_pending.tick_and_reset()
+        self.c_qsize.tick_and_reset()
+        self.c_util.tick_and_reset()
         self.response_time.tick()
         self.service_time.tick()
 
@@ -51,14 +67,14 @@ class RunStats:
                 "requests": self.n_requests.data,
                 "serviced": self.n_serviced.data,
                 "completed": self.n_completed.data,
+                "pending": self.c_pending.data,  # average pending requests
+                "qsize": self.c_qsize.data,  # average queue size
+                "utilization": self.c_util.data,  # average utilization
             }
         )
-        df["pending"] = df.requests - df.completed
-        df["queued"] = df.requests - df.serviced
-        df["active"] = df.serviced - df.completed
-        df["r_request"] = df.requests.diff().fillna(df.requests)
-        df["r_serviced"] = df.serviced.diff().fillna(df.serviced)
-        df["r_completed"] = df.completed.diff().fillna(df.completed)
+        df["r_request"] = _diff(df.requests)
+        df["r_serviced"] = _diff(df.serviced)
+        df["r_completed"] = _diff(df.completed)
         rts = [np.array(times) for times in self.response_time.data]
         sts = [np.array(times) for times in self.service_time.data]
         for p in percentiles:

@@ -1,5 +1,6 @@
 import typing as t
 
+
 class Clock:
     def __init__(self):
         self._t = 0

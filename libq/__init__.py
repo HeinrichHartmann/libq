@@ -2,8 +2,9 @@ import numpy as np
 import typing as t
 from collections import deque
 
-from stats import RunStats
-from rreg import RequestRegister, Request, Clock
+from .stats import RunStats
+from .register import RequestRegister, Request, Clock
+
 
 class Worker:
     def clear(self):
@@ -53,11 +54,12 @@ class ConstWorker(Worker):
 
 
 class MarkovWorker(Worker):
-    def __init__(self, service_time: float):
+    def __init__(self, service_time: float, dist=np.random.geometric):
         assert service_time > 0
         self.t: int = 0  # clock
         self.req: t.Optional[Request] = None
         self.p: float = 1.0 / service_time
+        self.dist = dist
 
     def clear(self):
         self.t = 0
@@ -68,7 +70,7 @@ class MarkovWorker(Worker):
 
     def assign(self, r: Request):
         assert self.req == None
-        self.t = np.random.geometric(self.p)
+        self.t = self.dist(self.p)
         self.req = r
         r.service()
 
@@ -150,7 +152,6 @@ class QSystem:
         return ret
 
 
-
 def run(
     workload: t.List[int],
     sys: QSystem,
@@ -189,6 +190,9 @@ def run(
         reg.tick()
 
         # Collect telemetry
+        stats.c_pending.add(float(sys.n_arrived() - sys.n_completed()) / step)
+        stats.c_qsize.add(float(sys.n_arrived() - sys.n_serviced()) / step)
+        stats.c_util.add(float(sys.n_serviced() - sys.n_completed()) / step)
         if (t + 1) % step == 0:
             if term > 1:
                 term -= 1
