@@ -17,4 +17,4 @@ df = stats.df(percentiles=[100, 90, 50])
 
 A more complete example is available in the examples directory:
 
-![Example](!/examples/example.png)
+![Example](/example/example.png)
